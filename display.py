@@ -2,7 +2,7 @@ import ast
 import pandas as pd
 import streamlit as st
 
-CSV_FILE_PATH = "results/best_combinations.csv"
+CSV_FILE_PATH = "your/path/to/best_combinations.csv" # -> Change this to your best_combinations.csv file path
 
 st.title("Asistente Callcenter 📞")
 

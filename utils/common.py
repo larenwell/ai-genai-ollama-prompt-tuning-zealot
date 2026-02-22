@@ -6,6 +6,7 @@ from typing import Dict
 from .llms.llm_handling import llm
 from .metrics.groundtruth import GroundTruthGenerator
 from .llms.prompt_generation import PromptVariationGenerator
+from .llms.prompt_variation_v1 import PromptVariationGeneratorV1
 from .analysis.data_analysis import CallCenterDataProcessor
 from .metrics.response_metrics import AcademicallyFoundedEvaluator
 
@@ -23,11 +24,20 @@ PROMPT_VARIATIONS = [
     "empathy_focused"
 ]
 
+PROMPT_VARIATIONS_V1 = [
+    "step_by_step",
+    "empathic_prompt",
+    "technical_prompt",
+    "consultive_prompt",
+    "client_segmentation_prompt"
+]
+
 # Initializing objects
 validator = AcademicallyFoundedEvaluator()
 prompt_generator = PromptVariationGenerator()
 data_processor = CallCenterDataProcessor()
 ground_truth_generator = GroundTruthGenerator()
+prompt_generator_v1 = PromptVariationGeneratorV1()
 
 def load_json_data(json_path: str = JSON_PATH) -> Dict:
     return json.load(open(json_path, 'r', encoding='utf-8'))
@@ -60,7 +70,7 @@ def extract_best_combinations_per_customer(results_df: pd.DataFrame) -> pd.DataF
     return best_combinations[['customer_name', 'flashcard', 'academic_scores', 'metadata']]
 
 
-def process_single_customer(customer_name: str, prompt_variation: str = "baseline", model_name: str = "mistral")-> Dict:
+def process_single_customer(customer_name: str, prompt_variation: str, version: int = 1, model_name: str = "mistral")-> Dict:
     # PASO 1: Procesar JSON del usuario
     json_data = load_json_data()
     customer_data = json_data.get(customer_name, [])
@@ -71,11 +81,18 @@ def process_single_customer(customer_name: str, prompt_variation: str = "baselin
     customer_info = processed_data
 
     # PASO 2: Generar prompt optimizado y generar expected result
-    prompt = prompt_generator.generate_prompt_for_customer(
-        prompt_variation,
-        customer_info['calls'],
-        customer_info['summary']
-    )
+    if version == 1:
+        prompt = prompt_generator_v1.generate_prompt_for_customer(
+            prompt_variation,
+            customer_info['calls'],
+            customer_info['summary']
+        )
+    else: 
+        prompt = prompt_generator.generate_prompt_for_customer(
+            prompt_variation,
+            customer_info['calls'],
+            customer_info['summary']
+        )
 
     expected_result = ground_truth_generator.generate_expected_output(customer_info)
 
@@ -119,13 +136,18 @@ def process_single_customer(customer_name: str, prompt_variation: str = "baselin
     return final_result
 
 
-def run_prompt_tuning_evaluation(sample_size: int = None):
+def run_prompt_tuning_evaluation(sample_size: int = None , version: int = 1):
     json_data = load_json_data()
     test_cases = list(json_data.keys())
     if sample_size: 
         test_cases = test_cases[:sample_size]
 
-    total_combinations = len(test_cases) * len(MODELS) * len(PROMPT_VARIATIONS)
+    if version == 1:
+        variations = PROMPT_VARIATIONS_V1
+    else:
+        variations = PROMPT_VARIATIONS
+
+    total_combinations = len(test_cases) * len(MODELS) * len(variations)
     print(f"Total de combinaciones: {total_combinations}")
 
 
@@ -134,10 +156,10 @@ def run_prompt_tuning_evaluation(sample_size: int = None):
 
     for customer_name in test_cases:
         for model_name in MODELS:
-            for prompt_variation in PROMPT_VARIATIONS:
+            for prompt_variation in variations:
                 current_combination += 1
                 print(f"Procesando {current_combination}/{total_combinations}: {customer_name} | {model_name} | {prompt_variation}")
-                customer_result = process_single_customer(customer_name, prompt_variation, model_name)
+                customer_result = process_single_customer(customer_name, prompt_variation, version, model_name)
 
                 result = {
                     'customer_name': customer_name,
@@ -153,7 +175,7 @@ def run_prompt_tuning_evaluation(sample_size: int = None):
     best_combinations = extract_best_combinations_per_customer(df_results)
 
     # Save results
-    df_results.to_csv('results/all_results.csv', index=False)
-    best_combinations.to_csv('results/best_combinations.csv', index=False)
+    df_results.to_csv(f'results/all_results_v{version}.csv', index=False)
+    best_combinations.to_csv(f'results/best_combinations_v{version}.csv', index=False)
     
     print("✅ Evaluación finalizada")
